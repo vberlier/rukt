@@ -11,4 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
+- Initial commit
+
+## [0.1.0](https://github.com/vberlier/rukt/releases/tag/v0.1.0) - 2024-11-13
+
+### Other
+
 - Initial release
