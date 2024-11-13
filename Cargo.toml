@@ -2,5 +2,9 @@
 name = "rukt"
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Simple Rust dialect for token-based compile-time scripting"
+repository = "https://github.com/vberlier/rukt"
+authors = ["Valentin Berlier <berlier.v@gmail.com>"]
 
 [dependencies]
