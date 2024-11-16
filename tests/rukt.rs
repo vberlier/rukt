@@ -43,7 +43,7 @@ fn let_literal() {
 }
 
 #[test]
-fn let_group() {
+fn let_token_tree() {
     rukt! {
         let a = (^here);
         let b = {
@@ -60,4 +60,28 @@ fn let_group() {
         SYNTAX,
         "{ [ARBITRARY SYNTAX] in (^ here) where \"nothing\" => match }"
     );
+}
+
+#[test]
+fn let_export() {
+    rukt! {
+        pub(self) let value = [1, 2, 3];
+    }
+    rukt! {
+        let [$($number:tt),*] = value;
+        expand {
+            const VALUE: u32 = 0 $(+ $number)*;
+        }
+    }
+    assert_eq!(VALUE, 6);
+    assert_eq!(value!(), [1, 2, 3]);
+}
+
+#[test]
+fn parse_regular_macro() {
+    rukt! {
+        let value = { 7 [arbitrary] stuff ... };
+        pub(self) let string = rukt::builtins::parse::<expr>(stringify!($value));
+    }
+    assert_eq!(string!(), "{ 7 [arbitrary] stuff ... }");
 }

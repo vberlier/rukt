@@ -14,7 +14,7 @@
 //!
 //! ```
 //! macro_rules! example {
-//!     ($T:tt $S:tt $P:tt $V:tt $N:tt $D:tt) => {
+//!     ($T:tt $S:tt $N:tt $P:tt $V:tt $D:tt) => {
 //!     };
 //! }
 //! ```
@@ -22,17 +22,17 @@
 //! For brevity, macros invoked by the evaluator use a conventional
 //! single-letter metavariable name to bind each specific fragment.
 //!
-//! The `$D:tt` metavariable at the very end is not part of the state of the
-//! interpreter. It's always bound to the dollar-sign token `$`, which can be
-//! useful for generating intermediate `macro_rules` definitions.
+//! The `$D:tt` metavariable at the very end is not part of the evaluation
+//! state. It's always bound to the dollar-sign token `$`, which can be useful
+//! for generating intermediate `macro_rules` definitions.
 //!
-//! All macros expand to a call to the next continuation, which can be static or
-//! popped from the [continuation stack](#next-continuation).
+//! All macros expand to a call to a continuation. This can be a predetermined
+//! continuation or the [next dynamic continuation](#next-continuation).
 //!
 //! ```
 //! macro_rules! example {
-//!     ($T:tt $S:tt $P:tt $V:tt $N:tt $D:tt) => {
-//!         continuation!($T $S $P $V $N $);
+//!     ($T:tt $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+//!         continuation!($T $S $N $P $V $);
 //!     };
 //! }
 //! ```
@@ -47,8 +47,8 @@
 //!
 //! ```
 //! macro_rules! example {
-//!     ({ let $L:tt = $($T:tt)* } $S:tt $P:tt $V:tt $N:tt $D:tt) => {
-//!         continuation!({ $($T)* } () $P $V $N $);
+//!     ({ let $L:tt = $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+//!         continuation!({ $($T)* } () $N $P $V $);
 //!     };
 //! }
 //! ```
@@ -66,8 +66,53 @@
 //!
 //! ```
 //! macro_rules! example {
-//!     ($T:tt $S:tt $P:tt $V:tt $N:tt $D:tt) => {
-//!         continuation!($T () $P $V $N $);
+//!     ($T:tt $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+//!         continuation!($T () $N $P $V $);
+//!     };
+//! }
+//! ```
+//!
+//! # Next continuation
+//!
+//! The `$N:tt` metavariable matches the next dynamic continuation.
+//!
+//! After evaluating part of an expression, most macros will need to invoke the
+//! next continuation to dispatch depending on the previous caller.
+//!
+//! ```
+//! macro_rules! example {
+//!     ($T:tt $S:tt ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+//!         $F!($T "hello" $($C)* $P $V $);
+//!     };
+//! }
+//! ```
+//!
+//! The pattern for destructuring the continuation is `($F:path; $($C:tt)*)`,
+//! where `$F:path` matches an arbitrary Rust path to a declarative macro that
+//! follows the calling convention of the evaluator, and `$($C:tt)*` matches
+//! additional context information that was saved when the continuation was
+//! pushed.
+//!
+//! The context information `$C` includes the previous continuation. As such, it
+//! must be forwarded after the current subject `$S` and before the execution
+//! environment patterns `$P`, which is where the next macro will be expecting
+//! to receive its next continuation.
+//!
+//! When expecting a sub-expression as part of a larger construct, pushing a
+//! continuation makes it so that the evaluator can call you back once the
+//! sub-expressions is evaluated.
+//!
+//! ```
+//! macro_rules! example {
+//!     ({ let $L:tt = $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+//!         expression!({ $($T)* } () (let_binding; $L $N) $P $V $);
+//!     };
+//! }
+//! ```
+//! ```
+//! macro_rules! let_binding {
+//!     ({ ; $($T:tt)* } $S:tt $I:ident $N:tt [$($P:tt)*] [$($V:tt)*] $D:tt) => {
+//!         block!({ $($T)* } () $N [$($P)* $D$I:tt] [$($V)* $S] $);
 //!     };
 //! }
 //! ```
@@ -89,8 +134,8 @@
 //!
 //! ```
 //! macro_rules! example {
-//!     ($T:tt $S:tt [$($P:tt)*] [$($V:tt)*] $N:tt $D:tt) => {
-//!         continuation!($T () [$($P)* $message:tt] [$($V)* "hello"] $N $);
+//!     ($T:tt $S:tt $N:tt [$($P:tt)*] [$($V:tt)*] $D:tt) => {
+//!         continuation!($T () $N [$($P)* $message:tt] [$($V)* "hello"] $);
 //!     };
 //! }
 //! ```
@@ -100,13 +145,13 @@
 //!
 //! ```
 //! macro_rules! example {
-//!     ($T:tt $S:tt $P:tt $V:tt $N:tt $D:tt) => {
+//!     ($T:tt $S:tt $N:tt$P:tt $V:tt  $D:tt) => {
 //!         macro_rules! __transcribe {
-//!             ($P $TT:tt $PP:tt $VV:tt $NN:tt) => {
-//!                 continuation!($TT $S $PP $VV $NN $);
+//!             ($P $TT:tt $NN:tt $PP:tt $VV:tt) => {
+//!                 continuation!($TT $S $NN $PP $VV $);
 //!             };
 //!         }
-//!         __transcribe!($V $T $P $V $N);
+//!         __transcribe!($V $T $N $P $V);
 //!     };
 //! }
 //! ```
@@ -120,80 +165,86 @@
 //! variable substitution should only occur within the current subject `$S`
 //! before passing it to the next continuation.
 //!
-//! # Next continuation
-//!
-//! The `$N:tt` metavariable matches the stack of next continuations, enclosed
-//! in brackets `[]`.
-//!
-//! After evaluating part of an expression, most macros will need to pop the
-//! next continuation from the stack to dispatch depending on the previous
-//! caller.
-//!
-//! ```
-//! macro_rules! example {
-//!     ($T:tt $S:tt $P:tt $V:tt [($F:path; $($C:tt)*) $($N:tt)*] $D:tt) => {
-//!         $F!($T "hello" $($C)* $P $V [$($N)*] $);
-//!     };
-//! }
-//! ```
-//!
-//! The pattern for destructuring continuations is `($F:path; $($C:tt)*)`, where
-//! `$F:path` matches an arbitrary Rust path to a declarative macro that follows
-//! the calling convention of the evaluator, and `$($C:tt)*` matches additional
-//! context information that was saved when the continuation was pushed.
-//!
-//! Context information `$C` must be forwarded after the current subject `$S`
-//! and before the execution environment patterns `$P`.
-//!
-//! When expecting a sub-expression as part of a larger construct, pushing a
-//! continuation makes it so that the evaluator can call you back once the
-//! sub-expressions is evaluated.
-//!
-//! ```
-//! macro_rules! example {
-//!     ({ let $L:tt = $($T:tt)* } $S:tt $P:tt $V:tt [$($N:tt)*] $D:tt) => {
-//!         expression!({ $($T)* } () $P $V [(let_binding; $L) $($N)*] $);
-//!     };
-//! }
-//! ```
-//! ```
-//! macro_rules! let_binding {
-//!     ({ ; $($T:tt)* } $S:tt $I:ident [$($P:tt)*] [$($V:tt)*] $N:tt $D:tt) => {
-//!         block!({ $($T)* } () [$($P)* $D$I:tt] [$($V)* $S] $N $);
-//!     };
-//! }
-//! ```
 
 #[doc(hidden)]
 #[macro_export]
 macro_rules! eval_block {
-    ({} $S:tt $P:tt $V:tt $N:tt $D:tt) => {
+    ({} $S:tt $N:tt $P:tt $V:tt $D:tt) => {
     };
-    ({ let $L:tt = $($T:tt)* } $S:tt $P:tt $V:tt [$($N:tt)*] $D:tt) => {
-        $crate::eval::expression!({ $($T)* } () $P $V [($crate::eval_let_binding; $L) $($N)*] $);
+    ({ use $($I:ident)::+; $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $($I)::*!({ $($T)* } () ($crate::eval_use_import; [$($I)::*] $N) $P $V $);
     };
-    ({ expand { $($B:tt)* } $($T:tt)* } $S:tt $P:tt $V:tt $N:tt $D:tt) => {
+    ({ use $($I:ident)::+ as $A:ident; $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $($I)::*!({ $($T)* } () ($crate::eval_use_import; [$A] $N) $P $V $);
+    };
+    ({ let $L:tt = $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval_let_binding; $L $N) $P $V $);
+    };
+    ({ $(#[$A:meta])* pub $(($($E:tt)*))? let $L:ident = $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval_let_binding_pub; $L [$(#[$A])*] [pub $(($($E)*))*] $N) $P $V $);
+    };
+    ({ expand { $($B:tt)* } $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
         macro_rules! __rukt_transcribe {
             ($P) => {
                 $($B)*
             };
         }
         __rukt_transcribe!($V);
-        $crate::eval::block!({ $($T)* } () $P $V $N $);
+        $crate::eval::block!({ $($T)* } () $N $P $V $);
     };
 }
 
 #[doc(hidden)]
 #[macro_export]
 macro_rules! eval_let_binding {
-    ({ ; $($T:tt)* } $S:tt _ $P:tt $V:tt $N:tt $D:tt) => {
-        $crate::eval::block!({ $($T)* } () $P $V $N $);
+    ({ ; $($T:tt)* } $S:tt _ $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::block!({ $($T)* } () $N $P $V $);
     };
-    ({ ; $($T:tt)* } $S:tt $I:ident [$($P:tt)*] [$($V:tt)*] $N:tt $D:tt) => {
-        $crate::eval::block!({ $($T)* } () [$($P)* $D$I:tt] [$($V)* $S] $N $);
+    ({ ; $($T:tt)* } $S:tt $I:ident $N:tt [$($P:tt)*] [$($V:tt)*] $D:tt) => {
+        $crate::eval::block!({ $($T)* } () $N [$($P)* $D$I:tt] [$($V)* $S] $);
     };
-    ({ ; $($T:tt)* } $S:tt $L:tt [$($P:tt)*] [$($V:tt)*] $N:tt $D:tt) => {
-        $crate::eval::block!({ $($T)* } () [$($P)* $L] [$($V)* $S] $N $);
+    ({ ; $($T:tt)* } $S:tt $L:tt $N:tt [$($P:tt)*] [$($V:tt)*] $D:tt) => {
+        $crate::eval::block!({ $($T)* } () $N [$($P)* $L] [$($V)* $S] $);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_let_binding_pub {
+    ({ ; $($T:tt)* } $S:tt $I:ident $A:tt $E:tt $N:tt [$($P:tt)*] [$($V:tt)*] $D:tt) => {
+        $crate::utils::escape_repetitions!([$S] [] [$DD] ($crate::export_variable; $I $A $E [$DD:tt] $));
+        $crate::eval::block!({ $($T)* } () $N [$($P)* $D$I:tt] [$($V)* $S] $);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! export_variable {
+    ([$S:tt] $I:ident [$($A:tt)*] [$($E:tt)+] [$($M:tt)+] $D:tt) => {
+        $($A)*
+        macro_rules! $I {
+            () => {
+                $I!{@internal $}
+            };
+            (@internal $($M)*) => {
+                $S
+            };
+            ($TT:tt $SS:tt ($FF:path; $D($CC:tt)*) $PP:tt $VV:tt $($M)*) => {
+                $FF!($TT $S $D($CC)* $PP $VV $);
+            };
+        }
+        $($E)* use $I;
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_use_import {
+    ($T:tt $S:tt [$I:ident] $N:tt [$($P:tt)*] [$($V:tt)*] $D:tt) => {
+        $crate::eval::block!($T () $N [$($P)* $D$I:tt] [$($V)* $S] $);
+    };
+    ($T:tt $S:tt [$_:ident $(::$I:ident)+] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval_use_import!($T $S [$($I)::*] $N $P $V $);
     };
 }
 
@@ -203,6 +254,8 @@ macro_rules! eval_let_binding {
 ///
 /// - [Let bindings](#let-bindings)
 /// - [Expand statements](#expand-statements)
+/// - [Exports](#exports)
+/// - [Imports](#imports)
 ///
 /// # Let bindings
 ///
@@ -286,52 +339,220 @@ macro_rules! eval_let_binding {
 /// Variable substitutions in the code block rely on the standard `$variable`
 /// syntax handled by
 /// [`macro_rules`](https://doc.rust-lang.org/reference/macros-by-example.html#metavariables).
+///
+/// # Exports
+///
+/// By default, none of the variables created during the expansion of a
+/// [`rukt`](crate::rukt) block will be visible to the outside.
+///
+/// You can use the `pub` keyword with the `#[macro_export]` attribute to export
+/// variables and make them accessible from [`rukt`](crate::rukt) blocks in
+/// other crates.
+///
+/// ```
+/// # use rukt::rukt;
+/// // my_crate/src/lib.rs
+/// rukt! {
+///     #[macro_export]
+///     pub let values = {
+///         A: 1,
+///         B: 2,
+///         C: 3,
+///     };
+/// }
+/// ```
+/// ```
+/// # mod my_crate {
+/// #     use rukt::rukt;
+/// #     rukt! {
+/// #         pub(crate) let values = {
+/// #             A: 1,
+/// #             B: 2,
+/// #             C: 3,
+/// #         };
+/// #     }
+/// # }
+/// # use rukt::rukt;
+/// rukt! {
+///     let {$($name:ident: $value:expr,)*} = my_crate::values;
+///     expand {
+///         enum MyEnum {
+///             $($name = $value,)*
+///         }
+///     }
+/// }
+/// assert_eq!(MyEnum::A as u32, 1);
+/// assert_eq!(MyEnum::B as u32, 2);
+/// assert_eq!(MyEnum::C as u32, 3);
+/// ```
+///
+/// In addition to binding the variable in the current scope, the `let`
+/// statement will generate a [`builtin`](crate::builtins) that resolves to the
+/// assigned value.
+///
+/// You can make the variable accessible only to other [`rukt`](crate::rukt)
+/// blocks in your own crate with the usual `pub(...)` variants. Of course when
+/// the variable is not meant to be visible to other crates there's no need for
+/// `#[macro_export]`.
+///
+/// In regular Rust, `pub(self)` is equivalent to not using `pub` in the first
+/// place. In Rukt it can be used to signal that you want to export the variable
+/// as a builtin without extending its visibility beyond the current Rust scope.
+/// As mentioned earlier, Rukt variables are not exported by default, there's no
+/// trace of them in the surrounding Rust code unless you use the `pub` keyword.
+///
+/// Exported variables can also be used directly as macros in the surrounding
+/// Rust code.
+///
+/// ```
+/// # use rukt::rukt;
+/// rukt! {
+///     pub(self) let numbers = [1, 2, 3];
+/// }
+/// assert_eq!(numbers!(), [1, 2, 3]);
+/// ```
+///
+/// # Imports
+///
+/// Rukt supports `use` statements as an alternative to `let` bindings for
+/// bringing exported variables into scope.
+///
+/// ```
+/// # use rukt::rukt;
+/// rukt! {
+///     pub(crate) let numbers = [1, 2, 3];
+/// }
+/// rukt! {
+///     use numbers;
+///     expand {
+///         assert_eq!($numbers, [1, 2, 3]);
+///     }
+/// }
+/// ```
+///
+/// While you can refer to exported variables by path in
+/// [expressions](expression), they must be brought into scope within the
+/// [`rukt`](crate::rukt) code block to allow substitution in token trees.
+///
+/// ```compile_fail
+/// # use rukt::rukt;
+/// rukt! {
+///     pub(crate) let numbers = [1, 2, 3];
+/// }
+/// rukt! {
+///     expand {
+///         assert_eq!($numbers, [1, 2, 3]); // error: no rules expected the token `$`
+///     }
+/// }
+/// ```
+///
+/// Rukt `use` statements also support the `as` keyword for bringing exported
+/// variables into scope under a different name.
+///
+/// ```
+/// # mod path {
+/// #     pub mod to {
+/// #         use rukt::rukt;
+/// #         rukt! {
+/// #             pub(crate) let my_variable = 123;
+/// #         }
+/// #     }
+/// # }
+/// # use rukt::rukt;
+/// rukt! {
+///     use path::to::my_variable;
+///     use path::to::my_variable as alias;
+/// }
+/// ```
+///
+/// Note that both variants of the `use` statement are nothing more than a
+/// restricted version of `let` which only allow binding exported variables.
+/// They're functionally completely equivalent. Rukt `use` statements simply
+/// make it easier to identify imports at first glance.
+///
+/// ```
+/// # mod path {
+/// #     pub mod to {
+/// #         use rukt::rukt;
+/// #         rukt! {
+/// #             pub(crate) let my_variable = 123;
+/// #         }
+/// #     }
+/// # }
+/// # use rukt::rukt;
+/// rukt! {
+///     let my_variable = path::to::my_variable;
+///     let alias = path::to::my_variable;
+/// }
+/// ```
 #[doc(inline)]
 pub use eval_block as block;
 
 #[doc(hidden)]
 #[macro_export]
 macro_rules! eval_expression {
-    ({ true $($T:tt)* } $S:tt $P:tt $V:tt [($F:path; $($C:tt)*) $($N:tt)*] $D:tt) => {
-        $F!({ $($T)* } true $($C)* $P $V [$($N)*] $);
+    ({ true $($T:tt)* } $S:tt ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!({ $($T)* } true $($C)* $P $V $);
     };
-    ({ false $($T:tt)* } $S:tt $P:tt $V:tt [($F:path; $($C:tt)*) $($N:tt)*] $D:tt) => {
-        $F!({ $($T)* } false $($C)* $P $V [$($N)*] $);
+    ({ false $($T:tt)* } $S:tt ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!({ $($T)* } false $($C)* $P $V $);
     };
-    ({ $I:ident $($T:tt)* } $S:tt $P:tt $V:tt $N:tt $D:tt) => {
+    ({ $I:ident $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
         macro_rules! __rukt_transcribe {
-            ($P $TT:tt $PP:tt $VV:tt $NN:tt) => {
-                $crate::eval_identifier!($TT [$D$I] $PP $VV $NN $);
+            ($P $TT:tt $NN:tt $PP:tt $VV:tt) => {
+                $crate::eval_identifier!($TT [$D$I] $NN $PP $VV $);
             };
         }
-        __rukt_transcribe!($V { $($T)* } $P $V $N);
+        __rukt_transcribe!($V { $($T)* } $N $P $V);
     };
-    ({ ($($R:tt)*) $($T:tt)* } $S:tt $P:tt $V:tt $N:tt $D:tt) => {
+    ({ ($($R:tt)*) $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
         macro_rules! __rukt_transcribe {
-            ($P $TT:tt $PP:tt $VV:tt [($FF:path; $D($CC:tt)*) $D($NN:tt)*]) => {
-                $FF!($TT ($($R)*) $D($CC)* $PP $VV [$D($NN)*] $);
+            ($P $TT:tt ($FF:path; $D($CC:tt)*) $PP:tt $VV:tt) => {
+                $FF!($TT ($($R)*) $D($CC)* $PP $VV $);
             };
         }
-        __rukt_transcribe!($V { $($T)* } $P $V $N);
+        __rukt_transcribe!($V { $($T)* } $N $P $V);
     };
-    ({ [$($R:tt)*] $($T:tt)* } $S:tt $P:tt $V:tt $N:tt $D:tt) => {
+    ({ [$($R:tt)*] $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
         macro_rules! __rukt_transcribe {
-            ($P $TT:tt $PP:tt $VV:tt [($FF:path; $D($CC:tt)*) $D($NN:tt)*]) => {
-                $FF!($TT [$($R)*] $D($CC)* $PP $VV [$D($NN)*] $);
+            ($P $TT:tt ($FF:path; $D($CC:tt)*) $PP:tt $VV:tt) => {
+                $FF!($TT [$($R)*] $D($CC)* $PP $VV $);
             };
         }
-        __rukt_transcribe!($V { $($T)* } $P $V $N);
+        __rukt_transcribe!($V { $($T)* } $N $P $V);
     };
-    ({ {$($R:tt)*} $($T:tt)* } $S:tt $P:tt $V:tt $N:tt $D:tt) => {
+    ({ {$($R:tt)*} $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
         macro_rules! __rukt_transcribe {
-            ($P $TT:tt $PP:tt $VV:tt [($FF:path; $D($CC:tt)*) $D($NN:tt)*]) => {
-                $FF!($TT {$($R)*} $D($CC)* $PP $VV [$D($NN)*] $);
+            ($P $TT:tt ($FF:path; $D($CC:tt)*) $PP:tt $VV:tt) => {
+                $FF!($TT {$($R)*} $D($CC)* $PP $VV $);
             };
         }
-        __rukt_transcribe!($V { $($T)* } $P $V $N);
+        __rukt_transcribe!($V { $($T)* } $N $P $V);
     };
-    ({ $R:tt $($T:tt)* } $S:tt $P:tt $V:tt [($F:path; $($C:tt)*) $($N:tt)*] $D:tt) => {
-        $F!({ $($T)* } $R $($C)* $P $V [$($N)*] $);
+    ({ $R:tt $($T:tt)* } $S:tt ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!({ $($T)* } $R $($C)* $P $V $);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_identifier {
+    ($T:tt [$S:tt] ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!($T $S $($C)* $P $V $);
+    };
+    ($T:tt [$_:tt $S:tt] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval_builtin!($T [$S] $N $P $V $);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_builtin {
+    ({ ::$I:ident $($T:tt)* } [$($S:tt)+] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval_builtin!({ $($T)* } [$($S)*::$I] $N $P $V $);
+    };
+    ($T:tt [$($S:tt)+] $N:tt $P:tt $V:tt $D:tt) => {
+        $($S)*!($T () $N $P $V $);
     };
 }
 
@@ -430,25 +651,3 @@ macro_rules! eval_expression {
 /// ```
 #[doc(inline)]
 pub use eval_expression as expression;
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! eval_identifier {
-    ($T:tt [$S:tt] $P:tt $V:tt [($F:path; $($C:tt)*) $($N:tt)*] $D:tt) => {
-        $F!($T $S $($C)* $P $V [$($N)*] $);
-    };
-    ($T:tt [$_:tt $S:tt] $P:tt $V:tt $N:tt $D:tt) => {
-        $crate::eval_builtin!($T [$S] $P $V $N $);
-    };
-}
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! eval_builtin {
-    ({ ::$I:ident $($T:tt)* } [$($S:tt)+] $P:tt $V:tt $N:tt $D:tt) => {
-        $crate::eval_builtin!({ $($T)* } [$($S)*::$I] $P $V $N $);
-    };
-    ($T:tt [$($S:tt)+] $P:tt $V:tt $N:tt $D:tt) => {
-        $($S)*!($T () $P $V $N $);
-    };
-}

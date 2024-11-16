@@ -12,12 +12,15 @@ Rust dialect for token-based compile-time scripting.
 use rukt::rukt;
 
 rukt! {
-    let operations = {
+    pub(crate) let operations = {
         add: +,
         sub: -,
         mul: *,
         div: /,
     };
+}
+
+rukt! {
     let {$($name:ident: $operator:tt,)*} = operations;
     expand {
         $(
