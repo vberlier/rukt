@@ -82,7 +82,8 @@ macro_rules! utils_escape_repetitions_braces {
 /// in the input tokens got replaced with the specified metavariable `$D`.
 ///
 /// This is useful when tokens are meant to be pasted into a generated macro,
-/// but expanded result should not be interpreted by `macro_rules`.
+/// but the expanded result should not be interpreted by `macro_rules`. (See
+/// [`rust/35853`](https://github.com/rust-lang/rust/issues/35853))
 ///
 /// The following example won't compile because the repetition `$($arg:expr),*`
 /// pasted in the generated macro will be interpreted by `macro_rules` upon
