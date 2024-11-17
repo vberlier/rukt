@@ -1,3 +1,5 @@
+#![recursion_limit = "512"]
+
 use rukt::rukt;
 
 #[test]
@@ -101,6 +103,20 @@ fn comparison() {
 }
 
 #[test]
+fn comparison_escape() {
+    rukt! {
+        let a = ($dummy:tt) == (anything);
+        let b = (anything) == ($dummy:tt);
+        let c = ($dummy:tt) == ($dummy:tt) ;
+        expand {
+            assert_eq!($a, false);
+            assert_eq!($b, false);
+            assert_eq!($c, true);
+        }
+    }
+}
+
+#[test]
 fn boolean() {
     rukt! {
         let p0 = true && true && true;
@@ -148,6 +164,43 @@ fn boolean() {
         expand {
             assert_eq!($p1, true);
             assert_eq!($p2, true);
+        }
+    }
+}
+
+#[test]
+fn starts_with() {
+    use rukt::builtins::starts_with;
+    rukt! {
+        let a = [1 2 3].starts_with(1 2);
+        let b = [1 2 3].starts_with(2 2);
+        let c = [1 2 3].starts_with(1 2 3 4);
+        expand {
+            assert_eq!($a, true);
+            assert_eq!($b, false);
+            assert_eq!($c, false);
+        }
+    }
+}
+
+#[test]
+fn starts_with_escape() {
+    use rukt::builtins::starts_with;
+    rukt! {
+        let D = $;
+        let a = [1 2 $D($_:tt)*].starts_with($D($_:tt)*);
+        let b = [1 2 $D($_:tt)*].starts_with(1 2);
+        let c = [1 2 $D($_:tt)*].starts_with(2 2);
+        let d = [1 2 $D($_:tt)*].starts_with(1 2 $D($T:tt)*);
+        let e = [1 2 $D($_:tt)*].starts_with(1 2 $D($_:tt)*);
+        let f = [1 2 $D($_:tt)*].starts_with(1 2 3 4);
+        expand {
+            assert_eq!($a, false);
+            assert_eq!($b, true);
+            assert_eq!($c, false);
+            assert_eq!($d, false);
+            assert_eq!($e, true);
+            assert_eq!($f, false);
         }
     }
 }

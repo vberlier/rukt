@@ -2,23 +2,102 @@
 
 #[doc(hidden)]
 #[macro_export]
+macro_rules! utils_escape {
+    ([($($G:tt)*) $($T:tt)*] $R:tt $E:tt $N:tt) => {
+        $crate::utils::escape!([$($G)*] [] $E ($crate::utils_escape_collect_parens; [$($T)*] $R $E ($crate::utils::escape) $N));
+    };
+    ([[$($G:tt)*] $($T:tt)*] $R:tt $E:tt $N:tt) => {
+        $crate::utils::escape!([$($G)*] [] $E ($crate::utils_escape_collect_brackets; [$($T)*] $R $E ($crate::utils::escape) $N));
+    };
+    ([{$($G:tt)*} $($T:tt)*] $R:tt $E:tt $N:tt) => {
+        $crate::utils::escape!([$($G)*] [] $E ($crate::utils_escape_collect_braces; [$($T)*] $R $E ($crate::utils::escape) $N));
+    };
+    ([$H:tt $($T:tt)*] $R:tt $E:tt $N:tt) => {
+        $crate::utils_escape_detect!([=$H=] [$($T)*] $R $E $N);
+    };
+    ([] [$($R:tt)*] $E:tt ($F:path; $($C:tt)*)) => {
+        $F!([$($R)*] $($C)*);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! utils_escape_detect {
+    ([$(=)$+] $T:tt [$($R:tt)*] [$($E:tt)*] $N:tt) => {
+        $crate::utils::escape!($T [$($R)* $($E)*] [$($E)*] $N);
+    };
+    ([=$H:tt=] $T:tt [$($R:tt)*] $E:tt $N:tt) => {
+        $crate::utils::escape!($T [$($R)* $H] $E $N);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! utils_escape_collect_parens {
+    ([$($G:tt)*] $T:tt [$($R:tt)*] $E:tt ($F:path) $N:tt) => {
+        $F!($T [$($R)* ($($G)*)] $E $N);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! utils_escape_collect_brackets {
+    ([$($G:tt)*] $T:tt [$($R:tt)*] $E:tt ($F:path) $N:tt) => {
+        $F!($T [$($R)* [$($G)*]] $E $N);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! utils_escape_collect_braces {
+    ([$($G:tt)*] $T:tt [$($R:tt)*] $E:tt ($F:path) $N:tt) => {
+        $F!($T [$($R)* {$($G)*}] $E $N);
+    };
+}
+
+/// Replace dollar sign tokens `$` with the given tokens.
+///
+/// The macro accepts the source tokens, followed by the initial output tokens,
+/// followed by the escape tokens, followed by a next continuation.
+///
+/// ```
+/// # use rukt::utils::escape;
+/// macro_rules! define {
+///     ([$($T:tt)*] $I:ident) => {
+///         const $I: &str = stringify!($($T)*);
+///     }
+/// }
+/// escape!([$name:ident($($arg:expr),*)] [] [<dollar>] (define; CALL_PATTERN));
+/// assert_eq!(CALL_PATTERN, "<dollar>name:ident(<dollar>(<dollar>arg:expr),*)");
+/// ```
+///
+/// Notice how all dollar signs the input tokens got replaced with the escape
+/// tokens.
+///
+/// This is useful when the input tokens are meant to be matched against
+/// literally as a pattern in a generated macro.
+#[doc(inline)]
+pub use utils_escape as escape;
+
+#[doc(hidden)]
+#[macro_export]
 macro_rules! utils_escape_repetitions {
-    ([($($G:tt)*) $($T:tt)*] $R:tt $M:tt $N:tt) => {
-        $crate::utils::escape_repetitions!([$($G)*] [] $M ($crate::utils_escape_repetitions_parens; [$($T)*] $R $M $N));
+    ([($($G:tt)*) $($T:tt)*] $R:tt $E:tt $N:tt) => {
+        $crate::utils::escape_repetitions!([$($G)*] [] $E ($crate::utils_escape_collect_parens; [$($T)*] $R $E ($crate::utils::escape_repetitions) $N));
     };
-    ([[$($G:tt)*] $($T:tt)*] $R:tt $M:tt $N:tt) => {
-        $crate::utils::escape_repetitions!([$($G)*] [] $M ($crate::utils_escape_repetitions_brackets; [$($T)*] $R $M $N));
+    ([[$($G:tt)*] $($T:tt)*] $R:tt $E:tt $N:tt) => {
+        $crate::utils::escape_repetitions!([$($G)*] [] $E ($crate::utils_escape_collect_brackets; [$($T)*] $R $E ($crate::utils::escape_repetitions) $N));
     };
-    ([{$($G:tt)*} $($T:tt)*] $R:tt $M:tt $N:tt) => {
-        $crate::utils::escape_repetitions!([$($G)*] [] $M ($crate::utils_escape_repetitions_braces; [$($T)*] $R $M $N));
+    ([{$($G:tt)*} $($T:tt)*] $R:tt $E:tt $N:tt) => {
+        $crate::utils::escape_repetitions!([$($G)*] [] $E ($crate::utils_escape_collect_braces; [$($T)*] $R $E ($crate::utils::escape_repetitions) $N));
     };
-    ([$H:tt ($($G:tt)*) $($T:tt)*] $R:tt $M:tt $N:tt) => {
-        $crate::utils_escape_repetitions_detect!([=$H=] ($($G)*) [$($T)*] $R $M $N);
+    ([$H:tt ($($G:tt)*) $($T:tt)*] $R:tt $E:tt $N:tt) => {
+        $crate::utils_escape_repetitions_detect!([=$H=] ($($G)*) [$($T)*] $R $E $N);
     };
-    ([$H:tt $($T:tt)*] [$($R:tt)*] $M:tt $N:tt) => {
-        $crate::utils::escape_repetitions!([$($T)*] [$($R)* $H] $M $N);
+    ([$H:tt $($T:tt)*] [$($R:tt)*] $E:tt $N:tt) => {
+        $crate::utils::escape_repetitions!([$($T)*] [$($R)* $H] $E $N);
     };
-    ([] [$($R:tt)*] $M:tt ($F:path; $($C:tt)*)) => {
+    ([] [$($R:tt)*] $E:tt ($F:path; $($C:tt)*)) => {
         $F!([$($R)*] $($C)*);
     };
 }
@@ -26,43 +105,19 @@ macro_rules! utils_escape_repetitions {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! utils_escape_repetitions_detect {
-    ([$(=)$+] ($($G:tt)*) $T:tt [$($R:tt)*] [$($M:tt)*] $N:tt) => {
-        $crate::utils::escape_repetitions!([$($G)*] [] [$($M)*] ($crate::utils_escape_repetitions_parens; $T [$($R)* $($M)*] [$($M)*] $N));
+    ([$(=)$+] ($($G:tt)*) $T:tt [$($R:tt)*] [$($E:tt)*] $N:tt) => {
+        $crate::utils::escape_repetitions!([$($G)*] [] [$($E)*] ($crate::utils_escape_collect_parens; $T [$($R)* $($E)*] [$($E)*] ($crate::utils::escape_repetitions) $N));
     };
-    ([=$H:tt=] ($($G:tt)*) $T:tt [$($R:tt)*] $M:tt $N:tt) => {
-        $crate::utils::escape_repetitions!([$($G)*] [] $M ($crate::utils_escape_repetitions_parens; $T [$($R)* $H] $M $N));
-    };
-}
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! utils_escape_repetitions_parens {
-    ([$($G:tt)*] $T:tt [$($R:tt)*] $M:tt $N:tt) => {
-        $crate::utils::escape_repetitions!($T [$($R)* ($($G)*)] $M $N);
+    ([=$H:tt=] ($($G:tt)*) $T:tt [$($R:tt)*] $E:tt $N:tt) => {
+        $crate::utils::escape_repetitions!([$($G)*] [] $E ($crate::utils_escape_collect_parens; $T [$($R)* $H] $E ($crate::utils::escape_repetitions) $N));
     };
 }
 
-#[doc(hidden)]
-#[macro_export]
-macro_rules! utils_escape_repetitions_brackets {
-    ([$($G:tt)*] $T:tt [$($R:tt)*] $M:tt $N:tt) => {
-        $crate::utils::escape_repetitions!($T [$($R)* [$($G)*]] $M $N);
-    };
-}
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! utils_escape_repetitions_braces {
-    ([$($G:tt)*] $T:tt [$($R:tt)*] $M:tt $N:tt) => {
-        $crate::utils::escape_repetitions!($T [$($R)* {$($G)*}] $M $N);
-    };
-}
-
-/// Escape the dollar sign `$` prefixing `macro_rules` repetitions with the
-/// given metavariable.
+/// Replace the dollar sign `$` prefixing `macro_rules` repetitions with the
+/// given tokens.
 ///
 /// The macro accepts the source tokens, followed by the initial output tokens,
-/// followed by the metavariable, followed by a next continuation.
+/// followed by the escape tokens, followed by a next continuation.
 ///
 /// ```
 /// # use rukt::utils::escape_repetitions;
@@ -71,15 +126,15 @@ macro_rules! utils_escape_repetitions_braces {
 ///         const $I: &str = stringify!($($T)*);
 ///     }
 /// }
-/// escape_repetitions!([$name:ident($($arg:expr),*)] [] [$D] (define; CALL_PATTERN));
-/// assert_eq!(CALL_PATTERN.replace(" ", ""), "$name:ident($D($arg:expr),*)");
+/// escape_repetitions!([$name:ident($($arg:expr),*)] [] [<dollar>] (define; CALL_PATTERN));
+/// assert_eq!(CALL_PATTERN.replace(" ", ""), "$name:ident(<dollar>($arg:expr),*)");
 /// ```
 ///
-/// Notice how the repetition `$($arg:expr),*` turned into `$D($arg:expr),*`.
-/// The dollar sign `$` that would normally cause `macro_rules` to identify a
-/// potential [fragment
+/// Notice how the repetition `$($arg:expr),*` turned into
+/// `<dollar>($arg:expr),*`. The dollar sign `$` that would normally cause
+/// `macro_rules` to identify a potential [fragment
 /// repetition](https://doc.rust-lang.org/reference/macros-by-example.html#repetitions)
-/// in the input tokens got replaced with the specified metavariable `$D`.
+/// in the input tokens got replaced with the escape tokens.
 ///
 /// This is useful when tokens are meant to be pasted into a generated macro,
 /// but the expanded result should not be interpreted by `macro_rules`. (See
@@ -116,9 +171,9 @@ macro_rules! utils_escape_repetitions_braces {
 /// ```
 /// # use rukt::utils::escape_repetitions;
 /// macro_rules! define {
-///     ([$($T:tt)*] $I:ident $($M:tt)+) => {
+///     ([$($T:tt)*] $I:ident $($E:tt)+) => {
 ///         macro_rules! $I {
-///             ($($M)*) => {
+///             ($($E)*) => {
 ///                 stringify!($($T)*)
 ///             };
 ///         }
@@ -137,18 +192,37 @@ macro_rules! utils_escape_repetitions_braces {
 #[doc(inline)]
 pub use utils_escape_repetitions as escape_repetitions;
 
+#[doc(hidden)]
+#[macro_export]
+macro_rules! utils_select {
+    ([$($T:tt)*] [$([[$($R1:tt)*] [$($R2:tt)*]])+] $N:tt $D:tt) => {
+        macro_rules! __rukt_dispatch {
+            $(
+                ([$($R1)*] ($FF:path; $D($CC:tt)*)) => {
+                    $FF!([$($R2)*] $D($CC)*);
+                };
+            )*
+        }
+        __rukt_dispatch!([$($T)*] $N);
+    };
+}
+
+/// Select tokens associated with the first matching pattern.
+#[doc(inline)]
+pub use utils_select as select;
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    macro_rules! check {
-        ($T:tt $expected:expr) => {
-            assert_eq!(stringify!($T), $expected);
-        };
-    }
-
     #[test]
-    fn basic() {
+    fn test_escape_repetitions() {
+        macro_rules! check {
+            ($T:tt $expected:expr) => {
+                assert_eq!(stringify!($T), $expected);
+            };
+        }
+
         escape_repetitions!([] [] [$REP] (check; "[]"));
         escape_repetitions!([hello world] [] [$REP] (check; "[hello world]"));
         escape_repetitions!([hello(world)] [] [$REP] (check; "[hello(world)]"));

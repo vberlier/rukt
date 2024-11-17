@@ -224,9 +224,9 @@ macro_rules! export_variable {
         $($A)*
         macro_rules! $I {
             () => {
-                $I!{@internal $}
+                $I!{@unescape $}
             };
-            (@internal $($M)*) => {
+            (@unescape $($M)*) => {
                 $S
             };
             ($TT:tt $SS:tt ($FF:path; $D($CC:tt)*) $PP:tt $VV:tt $($M)*) => {
@@ -659,6 +659,11 @@ pub use eval_expression as expression;
 #[doc(hidden)]
 #[macro_export]
 macro_rules! eval_operator {
+    // builtin
+    ({ .$($I:ident)::+ $($T:tt)* } $S:tt $O:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $($I)::*!({ $($T)* } $S ($crate::eval::operator; $O $N) $P $V $);
+    };
+
     // ! operator
     ($T:tt $S:tt [!] $N:tt $P:tt $V:tt $D:tt) => {
         $crate::eval_not!($T $S $N $P $V $);
@@ -666,12 +671,10 @@ macro_rules! eval_operator {
 
     // comparison operators
     ($T:tt $S:tt [== $R:tt] $N:tt $P:tt $V:tt $D:tt) => {
-        // todo: escape dollar
-        $crate::eval_select!($T $R [{ [$S] [true] } { [$_:tt] [false] }] $N $P $V $);
+        $crate::utils::escape!([[$R] [$S]] [] [__rukt_dollar] ($crate::eval_compare_escaped; true false $T $N $P $V));
     };
     ($T:tt $S:tt [!= $R:tt] $N:tt $P:tt $V:tt $D:tt) => {
-        // todo: escape dollar
-        $crate::eval_select!($T $R [{ [$S] [false] } { [$_:tt] [true] }] $N $P $V $);
+        $crate::utils::escape!([[$R] [$S]] [] [__rukt_dollar] ($crate::eval_compare_escaped; false true $T $N $P $V));
     };
     ({ == $($T:tt)* } $S:tt $O:tt $N:tt $P:tt $V:tt $D:tt) => {
         $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [== $S] ($crate::eval::operator; $O $N)) $P $V $);
@@ -713,17 +716,10 @@ macro_rules! eval_not {
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! eval_select {
-    ($T:tt $S:tt [$({ [$($R1:tt)*] [$($R2:tt)*] })+] $N:tt $P:tt $V:tt $D:tt) => {
-        macro_rules! __rukt_dispatch {
-            $(
-                ($($R1)* $TT:tt ($FF:path; $D($CC:tt)*) $PP:tt $VV:tt) => {
-                    $FF!($TT $($R2)* $D($CC)* $PP $VV $);
-                };
-            )*
-        }
-        __rukt_dispatch!($S $T $N $P $V);
-    };
+macro_rules! eval_compare_escaped {
+    ([$S1:tt $S2:tt] $R1:tt $R2:tt $T:tt $N:tt $P:tt $V:tt) => {
+        $crate::utils::select!($S2 [[$S1 [$R1]] [[$_:tt] [$R2]]] ($crate::eval_unwrap; $T $N $P $V) $);
+    }
 }
 
 #[doc(hidden)]
@@ -834,3 +830,15 @@ macro_rules! eval_or {
 /// lazy and will always be evaluated eagerly.
 #[doc(inline)]
 pub use eval_operator as operator;
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_unwrap {
+    ([$S:tt] $T:tt ($F:path; $($C:tt)*) $P:tt $V:tt) => {
+        $F!($T $S $($C)* $P $V $);
+    }
+}
+
+/// Helper accepting tokens for the current subject as first argument.
+#[doc(inline)]
+pub use eval_unwrap as unwrap;

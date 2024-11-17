@@ -165,3 +165,62 @@ macro_rules! builtin_parse {
 /// ```
 #[doc(inline)]
 pub use builtin_parse as parse;
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! builtin_starts_with {
+    ({ ($($R:tt)*) $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+        macro_rules! __rukt_transcribe {
+            ($P $TT:tt $SS:tt $NN:tt $PP:tt $VV:tt) => {
+                $crate::utils::escape!([[$SS] [$($R)*]] [] [__rukt_dollar] ($crate::builtin_starts_with_escaped; $TT $NN $PP $VV $));
+            };
+        }
+        __rukt_transcribe!($V { $($T)* } $S $N $P $V);
+    }
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! builtin_starts_with_escaped {
+    ([[$S1:tt] [$($S2:tt)*]] $T:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::utils::select!([$S1] [
+            [[($($S2)* $D($_:tt)*)] [true]]
+            [[[$($S2)* $D($_:tt)*]] [true]]
+            [[{$($S2)* $D($_:tt)*}] [true]]
+            [[($D($_:tt)*)] [false]]
+            [[[$D($_:tt)*]] [false]]
+            [[{$D($_:tt)*}] [false]]
+        ] ($crate::eval_unwrap; $T $N $P $V) $);
+    };
+}
+
+/// Return `true` if the given tokens form a prefix of this token tree and
+/// `false` otherwise.
+///
+/// ```
+/// # use rukt::rukt;
+/// use rukt::builtins::starts_with;
+/// rukt! {
+///     let value = [1 2 3];
+///     let condition = value.starts_with(1 2);
+///     expand {
+///         assert_eq!($condition, true);
+///     }
+/// }
+/// ```
+///
+/// Note that `starts_with` can only be applied to a delimiter-enclosed token tree.
+///
+/// ```compile_fail
+/// # use rukt::rukt;
+/// use rukt::builtins::starts_with;
+/// rukt! {
+///     let value = "1 2 3";
+///     let condition = value.starts_with(1 2); // error: no rules expected the token `"1 2 3"`
+///     expand {
+///         assert_eq!($condition, true);
+///     }
+/// }
+/// ```
+#[doc(inline)]
+pub use builtin_starts_with as starts_with;
