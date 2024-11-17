@@ -108,7 +108,7 @@ macro_rules! builtin_parse {
 }
 
 /// Parse tokens into a specific syntax fragment according to the given
-/// specifier.
+/// [specifier](https://doc.rust-lang.org/reference/macros-by-example.html#metavariables).
 ///
 /// ```
 /// # use rukt::rukt;

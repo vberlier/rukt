@@ -85,3 +85,69 @@ fn parse_regular_macro() {
     }
     assert_eq!(string!(), "{ 7 [arbitrary] stuff ... }");
 }
+
+#[test]
+fn comparison() {
+    rukt! {
+        let a = "foo" == "bar";
+        let b = false == a;
+        let c = a != b;
+        expand {
+            assert_eq!($a, false);
+            assert_eq!($b, true);
+            assert_eq!($c, true);
+        }
+    }
+}
+
+#[test]
+fn boolean() {
+    rukt! {
+        let p0 = true && true && true;
+        let p1 = true && true && false;
+        let p2 = true && false && true;
+        let p3 = true && false && false;
+        let p4 = false && true && true;
+        let p5 = false && true && false;
+        let p6 = false && false && true;
+        let p7 = false && false && false;
+        expand {
+            assert_eq!($p0, true);
+            assert_eq!($p1, false);
+            assert_eq!($p2, false);
+            assert_eq!($p3, false);
+            assert_eq!($p4, false);
+            assert_eq!($p5, false);
+            assert_eq!($p6, false);
+            assert_eq!($p7, false);
+        }
+    };
+    rukt! {
+        let p0 = true || true || true;
+        let p1 = true || true || false;
+        let p2 = true || false || true;
+        let p3 = true || false || false;
+        let p4 = false || true || true;
+        let p5 = false || true || false;
+        let p6 = false || false || true;
+        let p7 = false || false || false;
+        expand {
+            assert_eq!($p0, true);
+            assert_eq!($p1, true);
+            assert_eq!($p2, true);
+            assert_eq!($p3, true);
+            assert_eq!($p4, true);
+            assert_eq!($p5, true);
+            assert_eq!($p6, true);
+            assert_eq!($p7, false);
+        }
+    }
+    rukt! {
+        let p1 = false && true || true;
+        let p2 = true || true && false;
+        expand {
+            assert_eq!($p1, true);
+            assert_eq!($p2, true);
+        }
+    }
+}

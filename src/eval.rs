@@ -178,10 +178,10 @@ macro_rules! eval_block {
         $($I)::*!({ $($T)* } () ($crate::eval_use_import; [$A] $N) $P $V $);
     };
     ({ let $L:tt = $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
-        $crate::eval::expression!({ $($T)* } () ($crate::eval_let_binding; $L $N) $P $V $);
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [] ($crate::eval_let_binding; $L $N)) $P $V $);
     };
     ({ $(#[$A:meta])* pub $(($($E:tt)*))? let $L:ident = $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
-        $crate::eval::expression!({ $($T)* } () ($crate::eval_let_binding_pub; $L [$(#[$A])*] [pub $(($($E)*))*] $N) $P $V $);
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [] ($crate::eval_let_binding_pub; $L [$(#[$A])*] [pub $(($($E)*))*] $N)) $P $V $);
     };
     ({ expand { $($B:tt)* } $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
         macro_rules! __rukt_transcribe {
@@ -529,6 +529,9 @@ macro_rules! eval_expression {
         }
         __rukt_transcribe!($V { $($T)* } $N $P $V);
     };
+    ({ ! $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [!] $N) $P $V $);
+    };
     ({ $R:tt $($T:tt)* } $S:tt ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
         $F!({ $($T)* } $R $($C)* $P $V $);
     };
@@ -558,11 +561,12 @@ macro_rules! eval_builtin {
 
 /// Evaluate expression.
 ///
-/// Rukt expressions can be one of the following:
+/// Rukt expressions support the following:
 ///
 /// - [Literals](#literals)
 /// - [Variables](#variables)
 /// - [Builtins](crate::builtins)
+/// - [Operators](operator)
 ///
 /// # Literals
 ///
@@ -651,3 +655,182 @@ macro_rules! eval_builtin {
 /// ```
 #[doc(inline)]
 pub use eval_expression as expression;
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_operator {
+    // ! operator
+    ($T:tt $S:tt [!] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval_not!($T $S $N $P $V $);
+    };
+
+    // comparison operators
+    ($T:tt $S:tt [== $R:tt] $N:tt $P:tt $V:tt $D:tt) => {
+        // todo: escape dollar
+        $crate::eval_select!($T $R [{ [$S] [true] } { [$_:tt] [false] }] $N $P $V $);
+    };
+    ($T:tt $S:tt [!= $R:tt] $N:tt $P:tt $V:tt $D:tt) => {
+        // todo: escape dollar
+        $crate::eval_select!($T $R [{ [$S] [false] } { [$_:tt] [true] }] $N $P $V $);
+    };
+    ({ == $($T:tt)* } $S:tt $O:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [== $S] ($crate::eval::operator; $O $N)) $P $V $);
+    };
+    ({ != $($T:tt)* } $S:tt $O:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [!= $S] ($crate::eval::operator; $O $N)) $P $V $);
+    };
+
+    // boolean operators
+    ($T:tt $S:tt [&& $R:tt] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval_and!($T $R $S $N $P $V $);
+    };
+    ({ && $($T:tt)* } $S:tt $O:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [&& $S] ($crate::eval::operator; $O $N)) $P $V $);
+    };
+    ($T:tt $S:tt [|| $R:tt] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval_or!($T $R $S $N $P $V $);
+    };
+    ({ || $($T:tt)* } $S:tt $O:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [|| $S] ($crate::eval::operator; $O $N)) $P $V $);
+    };
+
+    // nothing
+    ($T:tt $S:tt [] ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!($T $S $($C)* $P $V $);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_not {
+    ($T:tt true ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!($T false $($C)* $P $V $);
+    };
+    ($T:tt false ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!($T true $($C)* $P $V $);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_select {
+    ($T:tt $S:tt [$({ [$($R1:tt)*] [$($R2:tt)*] })+] $N:tt $P:tt $V:tt $D:tt) => {
+        macro_rules! __rukt_dispatch {
+            $(
+                ($($R1)* $TT:tt ($FF:path; $D($CC:tt)*) $PP:tt $VV:tt) => {
+                    $FF!($TT $($R2)* $D($CC)* $PP $VV $);
+                };
+            )*
+        }
+        __rukt_dispatch!($S $T $N $P $V);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_and {
+    // explicit truth table to validate the rhs even when its value doesn't matter
+    ($T:tt true true ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!($T true $($C)* $P $V $);
+    };
+    ($T:tt false false ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!($T false $($C)* $P $V $);
+    };
+    ($T:tt false true ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!($T false $($C)* $P $V $);
+    };
+    ($T:tt true false ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!($T false $($C)* $P $V $);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_or {
+    // explicit truth table to validate the rhs even when its value doesn't matter
+    ($T:tt true true ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!($T true $($C)* $P $V $);
+    };
+    ($T:tt false false ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!($T false $($C)* $P $V $);
+    };
+    ($T:tt false true ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!($T true $($C)* $P $V $);
+    };
+    ($T:tt true false ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!($T true $($C)* $P $V $);
+    };
+}
+
+/// Evaluate operator.
+///
+/// Rukt supports the following operators:
+///
+/// - [Comparison operators](#comparison-operators)
+/// - [Boolean operators](#boolean-operators)
+///
+/// # Comparison operators
+///
+/// You can use `==` and `!=` for comparing tokens.
+///
+/// ```
+/// # use rukt::rukt;
+/// rukt! {
+///     let value = 42;
+///     let equal = value == 42;
+///     let not_equal = equal != false;
+///     expand {
+///         assert_eq!($equal, true);
+///         assert_eq!($not_equal, true);
+///     }
+/// }
+/// ```
+///
+/// # Boolean operators
+///
+/// You can use the typical `!`, `&&`, and `||` boolean operators.
+///
+/// ```
+/// # use rukt::rukt;
+/// rukt! {
+///     let a = !true;
+///     let b = !false;
+///     expand {
+///         assert_eq!([$a, $b], [false, true]);
+///     }
+/// }
+/// rukt! {
+///     let a = true && true;
+///     let b = true && false;
+///     let c = false && true;
+///     let d = false && false;
+///     expand {
+///         assert_eq!([$a, $b, $c, $d], [true, false, false, false]);
+///     }
+/// }
+/// rukt! {
+///     let a = true || true;
+///     let b = true || false;
+///     let c = false || true;
+///     let d = false || false;
+///     expand {
+///         assert_eq!([$a, $b, $c, $d], [true, true, true, false]);
+///     }
+/// }
+/// ```
+///
+/// These operators will fail to compile when used with tokens other than `true`
+/// and `false`.
+///
+/// ```compile_fail
+/// # use rukt::rukt;
+/// rukt! {
+///     let value = 42;
+///     let _ = true && value; // error: no rules expected the token `42`
+/// }
+/// ```
+///
+/// Note that unlike in regular Rust, the right-side of `&&` and `||` is not
+/// lazy and will always be evaluated eagerly.
+#[doc(inline)]
+pub use eval_operator as operator;
