@@ -12,6 +12,6 @@ pub mod utils;
 #[macro_export]
 macro_rules! rukt {
     ($($T:tt)*) => {
-        $crate::eval::block!({ $($T)* } () / [] [] $);
+        $crate::eval::block!({ $($T)* } () ($crate::eval::stop;) [] [] $);
     };
 }

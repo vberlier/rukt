@@ -204,3 +204,72 @@ fn starts_with_escape() {
         }
     }
 }
+
+#[test]
+fn user_function() {
+    rukt! {
+        fn foo($n:expr) {
+            let inner = (123 * $n);
+            inner
+        }
+        let value = foo(2);
+        expand {
+            assert_eq!($value, 246);
+            assert_eq!(stringify!($inner), "$inner");
+        }
+    }
+}
+
+#[test]
+fn user_function_value() {
+    rukt! {
+        fn double($($args:tt)*) {
+            ($($args)* $($args)*)
+        }
+        fn apply($f:tt $($args:tt)*) {
+            f($($args)*)
+        }
+        let d = apply($double mind blown);
+        expand {
+            assert_eq!(stringify!($d), "(mind blown mind blown)");
+        }
+    }
+}
+
+#[test]
+fn user_function_expand() {
+    rukt! {
+        fn define($name:ident, $n:expr) {
+            expand {
+                const $name: u32 = $n;
+            }
+        }
+        define(SEVEN, 7);
+        let result = define(NINE, 9);
+        expand {
+            assert_eq!($result, ());
+        }
+    }
+    assert_eq!(SEVEN, 7);
+    assert_eq!(NINE, 9);
+}
+
+#[test]
+fn manual_function() {
+    rukt! {
+        let ($name:ident) = (test);
+        let manual_fn = {
+            fn $name() {
+                $name
+            }
+        };
+        let a = manual_fn();
+        let b = manual_fn()();
+        let equal = a == b && b()()() == b;
+        expand {
+            assert_eq!(stringify!($a), "{ fn test () { test } }");
+            assert_eq!(stringify!($b), "{ fn test () { test } }");
+            assert_eq!($equal, true);
+        }
+    }
+}

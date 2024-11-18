@@ -164,12 +164,18 @@
 //! metavariables passed to the generated macro. In this case for example,
 //! variable substitution should only occur within the current subject `$S`
 //! before passing it to the next continuation.
-//!
 
 #[doc(hidden)]
 #[macro_export]
 macro_rules! eval_block {
-    ({} $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+    ({} $S:tt ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!({} () $($C)* $P $V $);
+    };
+    ({ let $L:tt = $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [] ($crate::eval_let_binding; $L $N)) $P $V $);
+    };
+    ({ $(#[$A:meta])* pub $(($($E:tt)*))? let $L:ident = $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [] ($crate::eval_let_binding_pub; $L [$(#[$A])*] [pub $(($($E)*))*] $N)) $P $V $);
     };
     ({ use $($I:ident)::+; $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
         $($I)::*!({ $($T)* } () ($crate::eval_use_import; [$($I)::*] $N) $P $V $);
@@ -177,11 +183,12 @@ macro_rules! eval_block {
     ({ use $($I:ident)::+ as $A:ident; $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
         $($I)::*!({ $($T)* } () ($crate::eval_use_import; [$A] $N) $P $V $);
     };
-    ({ let $L:tt = $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
-        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [] ($crate::eval_let_binding; $L $N)) $P $V $);
+    ({ fn $I:ident($($R:tt)*) { $($B:tt)* } $($T:tt)* } $S:tt $N:tt [$($P:tt)*] [$($V:tt)*] $D:tt) => {
+        $crate::eval::block!({ $($T)* } () $N [$($P)* $D$I:tt] [$($V)* { fn $I($($R)*) [$($P)*] [$($V)*] { $($B)* } }] $);
     };
-    ({ $(#[$A:meta])* pub $(($($E:tt)*))? let $L:ident = $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
-        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [] ($crate::eval_let_binding_pub; $L [$(#[$A])*] [pub $(($($E)*))*] $N)) $P $V $);
+    ({ $(#[$A:meta])* pub $(($($E:tt)*))? fn $I:ident($($R:tt)*) { $($B:tt)* } $($T:tt)* } $S:tt $N:tt [$($P:tt)*] [$($V:tt)*] $D:tt) => {
+        $crate::utils::escape_repetitions!([{ fn $I($($R)*) [$($P)*] [$($V)*] { $($B)* } }] [] [$DD] ($crate::export_function; $I [$(#[$A])*] [pub $(($($E)*))*] [$DD:tt] $));
+        $crate::eval::block!({ $($T)* } () $N [$($P)* $D$I:tt] [$($V)* { fn $I($($A)*) [$($P)*] [$($V)*] { $($B)* } }] $);
     };
     ({ expand { $($B:tt)* } $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
         macro_rules! __rukt_transcribe {
@@ -192,6 +199,9 @@ macro_rules! eval_block {
         __rukt_transcribe!($V);
         $crate::eval::block!({ $($T)* } () $N $P $V $);
     };
+    ($T:tt $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!($T () ($crate::eval::operator; [] ($crate::eval_statement; $N)) $P $V $);
+    }
 }
 
 #[doc(hidden)]
@@ -223,14 +233,34 @@ macro_rules! export_variable {
     ([$S:tt] $I:ident [$($A:tt)*] [$($E:tt)+] [$($M:tt)+] $D:tt) => {
         $($A)*
         macro_rules! $I {
-            () => {
-                $I!{@unescape $}
+            ($TT:tt $SS:tt ($FF:path; $D($CC:tt)*) $PP:tt $VV:tt $($M)*) => {
+                $FF!($TT $S $D($CC)* $PP $VV $);
             };
             (@unescape $($M)*) => {
                 $S
             };
+            () => {
+                $I!{@unescape $}
+            };
+        }
+        $($E)* use $I;
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! export_function {
+    ([$S:tt] $I:ident [$($A:tt)*] [$($E:tt)+] [$($M:tt)+] $D:tt) => {
+        $($A)*
+        macro_rules! $I {
             ($TT:tt $SS:tt ($FF:path; $D($CC:tt)*) $PP:tt $VV:tt $($M)*) => {
                 $FF!($TT $S $D($CC)* $PP $VV $);
+            };
+            (@unescape $RR:tt $($M)*) => {
+                $crate::eval_call!({} $S $RR ($crate::eval::stop;) [] [] $);
+            };
+            ($D($RR:tt)*) => {
+                $I!(@unescape ($D($RR)*) $);
             };
         }
         $($E)* use $I;
@@ -248,14 +278,45 @@ macro_rules! eval_use_import {
     };
 }
 
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_statement {
+    ({; $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::block!({ $($T)* } () $N $P $V $);
+    };
+    ({} $S:tt ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!({} $S $($C)* $P $V $);
+    };
+}
+
 /// Evaluate statements within blocks.
 ///
 /// Rukt blocks can contain the following statements:
 ///
+/// - [Expression statements](#expression-statements)
 /// - [Let bindings](#let-bindings)
 /// - [Expand statements](#expand-statements)
+/// - [Function definitions](#function-definitions)
 /// - [Exports](#exports)
 /// - [Imports](#imports)
+/// - [Function exports](#function-exports)
+///
+/// # Expression statements
+///
+/// Just like in Rust, expressions can appear as top-level statements, followed
+/// by a semicolon `;`.
+///
+/// ```
+/// # use rukt::rukt;
+/// rukt! {
+///     42;
+///     ["hello", "world"];
+/// }
+/// ```
+///
+/// When the current block is evaluated in an expression context, the last
+/// expression in the block will be used as the result of the overall block if
+/// the expression is not followed by a semicolon `;`.
 ///
 /// # Let bindings
 ///
@@ -339,6 +400,69 @@ macro_rules! eval_use_import {
 /// Variable substitutions in the code block rely on the standard `$variable`
 /// syntax handled by
 /// [`macro_rules`](https://doc.rust-lang.org/reference/macros-by-example.html#metavariables).
+///
+/// # Function definitions
+///
+/// Just like in regular Rust, you can define functions with the `fn` keyword.
+/// Rukt functions use `macro_rules` patterns to match their arguments.
+///
+/// ```
+/// # use rukt::rukt;
+/// rukt! {
+///     fn hello($name:literal) {
+///         let message = { concat!("hello ", $name) };
+///         message
+///     }
+///     let result = hello("world");
+///     expand {
+///         assert_eq!($result, "hello world");
+///     }
+/// }
+/// ```
+///
+/// The last expression in the body will be returned if it's not followed by a
+/// semicolon `;`. Otherwise, the function will return the unit token `()` by
+/// default.
+///
+/// Rukt functions can be passed around as values and as arguments to other
+/// functions. Recursion is supported.
+///
+/// ```
+/// # use rukt::rukt;
+/// rukt! {
+///     fn apply($f:tt $($args:tt)*) {
+///         f($($args)*)
+///     }
+///     fn twice($arg:tt) {
+///         [$arg, $arg]
+///     }
+///     let result = apply($twice 42);
+///     expand {
+///         assert_eq!($result, [42, 42]);
+///     }
+/// }
+/// ```
+///
+/// Additionally, functions will capture all the variables currently in scope at
+/// their definition.
+///
+/// ```
+/// # use rukt::rukt;
+/// rukt! {
+///     let a = 1;
+///     fn get_function($b:tt) {
+///         let c = 3;
+///         fn f() {
+///             [$a, $b, $c]
+///         }
+///         f
+///     }
+///     let result = get_function(2)();
+///     expand {
+///         assert_eq!($result, [1, 2, 3]);
+///     }
+/// }
+/// ```
 ///
 /// # Exports
 ///
@@ -485,6 +609,57 @@ macro_rules! eval_use_import {
 ///     let alias = path::to::my_variable;
 /// }
 /// ```
+///
+/// # Function exports
+///
+/// Just like variables, you can export functions with the `pub` keyword.
+///
+/// ```
+/// # use rukt::rukt;
+/// rukt! {
+///     pub(self) fn foo() {
+///         "hello"
+///     }
+/// }
+/// rukt! {
+///     let result = foo();
+///     expand {
+///         assert_eq!($result, "hello");
+///     }
+/// }
+/// ```
+///
+/// To make the function accessible outside the crate, make sure to use the
+/// `#[macro_export]` attribute.
+///
+/// ```
+/// # use rukt::rukt;
+/// rukt! {
+///     #[macro_export]
+///     pub fn foo() {
+///         "hello"
+///     }
+/// }
+/// ```
+///
+/// Note that exported functions can also be invoked directly as macros outside
+/// of [`rukt`](crate::rukt) blocks.
+///
+/// ```
+/// # use rukt::rukt;
+/// rukt! {
+///     pub(crate) fn generate_message($name:literal) {
+///         expand {
+///             const MESSAGE: &str = concat!("hello ", $name);
+///         }
+///     }
+/// }
+/// generate_message!("world");
+/// assert_eq!(MESSAGE, "hello world");
+/// ```
+///
+/// However, outside of [`rukt`](crate::rukt) blocks, expanding exported
+/// functions in expression contexts is currently not supported.
 #[doc(inline)]
 pub use eval_block as block;
 
@@ -544,18 +719,18 @@ macro_rules! eval_identifier {
         $F!($T $S $($C)* $P $V $);
     };
     ($T:tt [$_:tt $S:tt] $N:tt $P:tt $V:tt $D:tt) => {
-        $crate::eval_builtin!($T [$S] $N $P $V $);
+        $crate::eval_builtin!($T () [$S] $N $P $V $);
     };
 }
 
 #[doc(hidden)]
 #[macro_export]
 macro_rules! eval_builtin {
-    ({ ::$I:ident $($T:tt)* } [$($S:tt)+] $N:tt $P:tt $V:tt $D:tt) => {
-        $crate::eval_builtin!({ $($T)* } [$($S)*::$I] $N $P $V $);
+    ({ ::$I:ident $($T:tt)* } $S:tt [$($R:tt)+] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval_builtin!({ $($T)* } $S [$($R)*::$I] $N $P $V $);
     };
-    ($T:tt [$($S:tt)+] $N:tt $P:tt $V:tt $D:tt) => {
-        $($S)*!($T () $N $P $V $);
+    ($T:tt $S:tt [$($R:tt)+] $N:tt $P:tt $V:tt $D:tt) => {
+        $($R)*!($T $S $N $P $V $);
     };
 }
 
@@ -659,9 +834,19 @@ pub use eval_expression as expression;
 #[doc(hidden)]
 #[macro_export]
 macro_rules! eval_operator {
+    // call
+    ({ ($($R:tt)*) $($T:tt)* } $S:tt $O:tt $N:tt $P:tt $V:tt $D:tt) => {
+        macro_rules! __rukt_transcribe {
+            ($P $TT:tt $SS:tt $NN:tt $PP:tt $VV:tt) => {
+                $crate::eval_call!($TT $SS ($($R)*) $NN $PP $VV $);
+            };
+        }
+        __rukt_transcribe!($V { $($T)* } $S ($crate::eval::operator; $O $N) $P $V);
+    };
+
     // builtin
-    ({ .$($I:ident)::+ $($T:tt)* } $S:tt $O:tt $N:tt $P:tt $V:tt $D:tt) => {
-        $($I)::*!({ $($T)* } $S ($crate::eval::operator; $O $N) $P $V $);
+    ({ .$I:ident $($T:tt)* } $S:tt $O:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval_builtin!({ $($T)* } $S [$I] ($crate::eval::operator; $O $N) $P $V $);
     };
 
     // ! operator
@@ -701,6 +886,28 @@ macro_rules! eval_operator {
     ($T:tt $S:tt [] ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
         $F!($T $S $($C)* $P $V $);
     };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_call {
+    (
+        $T:tt
+        { fn $I:ident ($($R:tt)*) $([$($FP:tt)*] [$($FV:tt)*])? { $($B:tt)* } }
+        $A:tt
+        $N:tt
+        $P:tt
+        $V:tt
+        $D:tt
+    ) => {
+        $crate::eval::block!(
+            { $($B)* }
+            ()
+            ($crate::eval::parent; $T $P $V $N)
+            [$($($FP)*)* $D$I:tt ($($R)*)]
+            [$($($FV)*)* { fn $I ($($R)*) $([$($FP)*] [$($FV)*])* { $($B)* } } $A]
+        $);
+    }
 }
 
 #[doc(hidden)]
@@ -764,6 +971,8 @@ macro_rules! eval_or {
 ///
 /// - [Comparison operators](#comparison-operators)
 /// - [Boolean operators](#boolean-operators)
+/// - [Function calls](#function-calls)
+/// - [Builtin operators](#builtin-operators)
 ///
 /// # Comparison operators
 ///
@@ -828,8 +1037,69 @@ macro_rules! eval_or {
 ///
 /// Note that unlike in regular Rust, the right-side of `&&` and `||` is not
 /// lazy and will always be evaluated eagerly.
+///
+/// # Function calls
+///
+/// You can call Rukt functions by supplying arguments enclosed in parentheses
+/// `()`. Variables defined in the current scope will be substituted before
+/// passing the arguments.
+///
+/// ```
+/// # use rukt::rukt;
+/// rukt! {
+///     fn generate_constants($($name:ident: $type:ty = $value:expr),*) {
+///         expand {
+///             $(
+///                 const $name: $type = $value;
+///             )*
+///         }
+///     }
+///     let value = { 1 + 2 };
+///     generate_constants(FOO: &str = "hello", BAR: u32 = $value);
+/// }
+/// assert_eq!(FOO, "hello");
+/// assert_eq!(BAR, 3);
+/// ```
+///
+/// # Builtin operators
+///
+/// You can apply [`builtins`](crate::builtins) to any value using Rust's
+/// standard field/method syntax.
+///
+/// ```
+/// # use rukt::rukt;
+/// use rukt::builtins::starts_with;
+/// rukt! {
+///     let result = [1 2 3].starts_with(1 2);
+///     expand {
+///         assert_eq!($result, true);
+///     }
+/// }
+/// ```
 #[doc(inline)]
 pub use eval_operator as operator;
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_parent {
+    ({} $S:tt $RT:tt $RP:tt $RV:tt ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
+        $F!($RT $S $($C)* $RP $RV $);
+    };
+}
+
+/// Resume evaluation of the parent block.
+#[doc(inline)]
+pub use eval_parent as parent;
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_stop {
+    ({} $S:tt $P:tt $V:tt $) => {};
+}
+
+/// End evaluation.
+#[doc(inline)]
+pub use eval_stop as stop;
 
 #[doc(hidden)]
 #[macro_export]

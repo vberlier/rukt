@@ -46,6 +46,7 @@ This is a lightweight, no-dependency crate, backed entirely by [declarative macr
 
 - [Statements](https://docs.rs/rukt/latest/rukt/eval/macro.block.html)
 - [Expressions](https://docs.rs/rukt/latest/rukt/eval/macro.expression.html)
+- [Operators](https://docs.rs/rukt/latest/rukt/eval/macro.operator.html)
 - [Builtins](https://docs.rs/rukt/latest/rukt/builtins/index.html)
 - [Internals](https://docs.rs/rukt/latest/rukt/eval/index.html)
 
