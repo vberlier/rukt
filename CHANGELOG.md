@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/vberlier/rukt/compare/v0.2.2...v0.2.3) - 2024-11-18
+
+### Added
+
+- Add functions
+- Add starts_with
+- Add operators
+
+### Other
+
+- Add link to https://github.com/rust-lang/rust/issues/35853
+
 ## [0.2.2](https://github.com/vberlier/rukt/compare/v0.2.1...v0.2.2) - 2024-11-16
 
 ### Added
