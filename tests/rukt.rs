@@ -273,3 +273,118 @@ fn manual_function() {
         }
     }
 }
+
+#[test]
+fn condition() {
+    use rukt::builtins::starts_with;
+    rukt! {
+        let value = if [1 2 3].starts_with(-1 2) {
+            expand {
+                compile_error!("invalid");
+            }
+        } else {
+            42
+        };
+
+        let unit = if false {} else {};
+
+        let result = if true == false {
+            1
+        } else if "something" == "other thing" {
+            2
+        } else if true == (42).starts_with($value) && value == 42 {
+            if true {
+                let inner = 3;
+                inner
+            } else {
+                9999
+            }
+        } else {
+            4
+        };
+
+        fn total() {
+            if true {
+                8
+            } else {
+                9
+            }
+        }
+        let total_result = total();
+
+        fn partial() {
+            if true {
+                8
+            }
+        }
+        let partial_result = partial();
+
+        fn with_semi() {
+            if true {
+                8
+            } else {
+                9
+            };
+        }
+        let with_semi_result = with_semi();
+
+        expand {
+            assert_eq!($value, 42);
+            assert_eq!($unit, ());
+            assert_eq!($result, 3);
+            assert_eq!(stringify!($inner), "$inner");
+            assert_eq!($total_result, 8);
+            assert_eq!($partial_result, ());
+            assert_eq!($with_semi_result, ());
+        }
+    }
+}
+
+#[test]
+fn condition_function() {
+    rukt! {
+        let result = true && if true {
+            fn f($n:tt) {
+                n
+            }
+            f
+        } else {
+            fn f($n:tt) {
+            }
+            f
+        }(123) == 123;
+        expand {
+            assert_eq!($result, true);
+        }
+    }
+}
+
+#[test]
+fn recursion() {
+    use rukt::builtins::starts_with;
+    rukt! {
+        let [$($start:tt)*] = [
+            123
+            456
+        ];
+        fn f($a:tt $($remaining:tt)*) {
+            if a == "stop" {
+                [start $($start)*]
+            } else {
+                let [$($prefix:tt)*] = if [$($remaining)*].starts_with(2) {
+                    [double it]
+                } else if [$($remaining)*].starts_with(3) {
+                    [just wait]
+                } else {
+                    []
+                };
+                let [$($result:tt)*] = f($($remaining)*);
+                [$($result)* -> $($prefix)* $a]
+            }
+        }
+        let result = f(1 2 3 "stop" ignored);
+        expand {
+            assert_eq!(stringify!($result), "[start 123 456 -> 3 -> just wait 2 -> double it 1]");
+        }
+    }
+}

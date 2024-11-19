@@ -72,7 +72,7 @@
 //! }
 //! ```
 //!
-//! # Next continuation
+//! ## Next continuation
 //!
 //! The `$N:tt` metavariable matches the next dynamic continuation.
 //!
@@ -117,7 +117,7 @@
 //! }
 //! ```
 //!
-//! # Environment
+//! ## Environment
 //!
 //! The `$P:tt` and `$V:tt` metavariables represent the current execution
 //! environment. The execution environment defines the variables accessible in
@@ -189,6 +189,9 @@ macro_rules! eval_block {
     ({ $(#[$A:meta])* pub $(($($E:tt)*))? fn $I:ident($($R:tt)*) { $($B:tt)* } $($T:tt)* } $S:tt $N:tt [$($P:tt)*] [$($V:tt)*] $D:tt) => {
         $crate::utils::escape_repetitions!([{ fn $I($($R)*) [$($P)*] [$($V)*] { $($B)* } }] [] [$DD] ($crate::export_function; $I [$(#[$A])*] [pub $(($($E)*))*] [$DD:tt] $));
         $crate::eval::block!({ $($T)* } () $N [$($P)* $D$I:tt] [$($V)* { fn $I($($A)*) [$($P)*] [$($V)*] { $($B)* } }] $);
+    };
+    ({ if $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [] ($crate::eval_if_statement; [] $N)) $P $V $);
     };
     ({ expand { $($B:tt)* } $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
         macro_rules! __rukt_transcribe {
@@ -280,6 +283,45 @@ macro_rules! eval_use_import {
 
 #[doc(hidden)]
 #[macro_export]
+macro_rules! eval_if_statement {
+    ({ { $($B1:tt)* } else { $($B2:tt)* } $($T:tt)* } true [$($A:tt)*] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval_if_statement_block!({ $($T)* } [$($A)* { $($B1)* }] $N $P $V $);
+    };
+    ({ { $($B1:tt)* } else { $($B2:tt)* } $($T:tt)* } false [$($A:tt)*] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval_if_statement_block!({ $($T)* } [$($A)* { $($B2)* }] $N $P $V $);
+    };
+    ({ { $($B:tt)* } else if $($T:tt)* } true [$($A:tt)*] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [] ($crate::eval_if_statement; [$($A)* { $($B)* }] $N)) $P $V $);
+    };
+    ({ { $($B:tt)* } else if $($T:tt)* } false [$($A:tt)*] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [] ($crate::eval_if_statement; [$($A)*] $N)) $P $V $);
+    };
+    ({ { $($B:tt)* } $($T:tt)* } true [$($A:tt)*] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval_if_statement_block!({ ; $($T)* } [$($A)* { $($B)* }] $N $P $V $);
+    };
+    ({ { $($B:tt)* } $($T:tt)* } false [$($A:tt)*] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval_if_statement_block!({ ; $($T)* } [$($A)*] $N $P $V $);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_if_statement_block {
+    ({} [$B:tt $($A:tt)*] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::block!($B () ($crate::eval::parent; {} $P $V $N) $P $V $);
+    };
+    ({ ; $($T:tt)* } [$B:tt $($A:tt)*] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::block!($B () ($crate::eval::stop;) $P $V $);
+        $crate::eval::block!({ $($T)* } () $N $P $V $);
+    };
+    ($T:tt [$B:tt $($A:tt)*] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::block!($B () ($crate::eval::stop;) $P $V $);
+        $crate::eval::block!($T () $N $P $V $);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
 macro_rules! eval_statement {
     ({; $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
         $crate::eval::block!({ $($T)* } () $N $P $V $);
@@ -296,6 +338,7 @@ macro_rules! eval_statement {
 /// - [Expression statements](#expression-statements)
 /// - [Let bindings](#let-bindings)
 /// - [Expand statements](#expand-statements)
+/// - [If statements](#if-statements)
 /// - [Function definitions](#function-definitions)
 /// - [Exports](#exports)
 /// - [Imports](#imports)
@@ -400,6 +443,27 @@ macro_rules! eval_statement {
 /// Variable substitutions in the code block rely on the standard `$variable`
 /// syntax handled by
 /// [`macro_rules`](https://doc.rust-lang.org/reference/macros-by-example.html#metavariables).
+///
+/// # If statements
+///
+/// They're exactly the same as Rust's own `if` statements. You can use `if`
+/// statements to evaluate Rukt code conditionally.
+///
+/// ```compile_fail
+/// # use rukt::rukt;
+/// rukt! {
+///     let value = 0;
+///     if value == 0 {
+///         expand {
+///             compile_error!("invalid"); // error: invalid
+///         }
+///     }
+/// }
+/// ```
+///
+/// You can also use `if` statements in
+/// [expression](crate::eval::expression#if-expressions) contexts as long as
+/// they specify an explicit `else` branch.
 ///
 /// # Function definitions
 ///
@@ -666,6 +730,9 @@ pub use eval_block as block;
 #[doc(hidden)]
 #[macro_export]
 macro_rules! eval_expression {
+    ({ if $($T:tt)* } $S:tt $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [] ($crate::eval_if_expression; [] $N)) $P $V $);
+    };
     ({ true $($T:tt)* } $S:tt ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
         $F!({ $($T)* } true $($C)* $P $V $);
     };
@@ -714,6 +781,31 @@ macro_rules! eval_expression {
 
 #[doc(hidden)]
 #[macro_export]
+macro_rules! eval_if_expression {
+    ({ { $($B1:tt)* } else { $($B2:tt)* } $($T:tt)* } true [$($A:tt)*] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval_if_expression_block!({ $($T)* } [$($A)* { $($B1)* }] $N $P $V $);
+    };
+    ({ { $($B1:tt)* } else { $($B2:tt)* } $($T:tt)* } false [$($A:tt)*] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval_if_expression_block!({ $($T)* } [$($A)* { $($B2)* }] $N $P $V $);
+    };
+    ({ { $($B:tt)* } else if $($T:tt)* } true [$($A:tt)*] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [] ($crate::eval_if_expression; [$($A)* { $($B)* }] $N)) $P $V $);
+    };
+    ({ { $($B:tt)* } else if $($T:tt)* } false [$($A:tt)*] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::expression!({ $($T)* } () ($crate::eval::operator; [] ($crate::eval_if_expression; [$($A)*] $N)) $P $V $);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! eval_if_expression_block {
+    ($T:tt [$B:tt $($A:tt)*] $N:tt $P:tt $V:tt $D:tt) => {
+        $crate::eval::block!($B () ($crate::eval::parent; $T $P $V $N) $P $V $);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
 macro_rules! eval_identifier {
     ($T:tt [$S:tt] ($F:path; $($C:tt)*) $P:tt $V:tt $D:tt) => {
         $F!($T $S $($C)* $P $V $);
@@ -742,6 +834,7 @@ macro_rules! eval_builtin {
 /// - [Variables](#variables)
 /// - [Builtins](crate::builtins)
 /// - [Operators](operator)
+/// - [If expressions](#if-expressions)
 ///
 /// # Literals
 ///
@@ -828,6 +921,31 @@ macro_rules! eval_builtin {
 /// }
 /// assert_eq!(VALUE, 123);
 /// ```
+///
+/// # If expressions
+///
+/// You can use `if` expressions to conditionally evaluate nested blocks.
+///
+/// ```
+/// # use rukt::rukt;
+/// rukt! {
+///     let value = "b";
+///     let result = if value == "a" {
+///         1
+///     } else if value == "b" {
+///         2
+///     } else {
+///         3
+///     };
+///     expand {
+///         assert_eq!($result, 2);
+///     }
+/// }
+/// ```
+///
+/// Note that unlike in regular Rust, the condition of `else if` clauses will
+/// always be eagerly evaluated, even when the branch to take has already been
+/// decided.
 #[doc(inline)]
 pub use eval_expression as expression;
 
@@ -1040,7 +1158,7 @@ macro_rules! eval_or {
 ///
 /// # Function calls
 ///
-/// You can call Rukt functions by supplying arguments enclosed in parentheses
+/// You can call Rukt [functions](block#function-definitions) by supplying arguments enclosed in parentheses
 /// `()`. Variables defined in the current scope will be substituted before
 /// passing the arguments.
 ///
